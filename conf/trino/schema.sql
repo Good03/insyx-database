@@ -111,3 +111,174 @@ CREATE TABLE IF NOT EXISTS iceberg.scisci.authors (
 WITH (
     format = 'PARQUET'
 );
+
+-- ─────────────────────────────────────────
+-- sources — journals, conferences, repositories
+-- Dimension table used by publication/source
+-- aggregation queries.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.sources (
+    source_id               VARCHAR,
+    display_name            VARCHAR,
+    source_type             VARCHAR,
+    publisher               VARCHAR,
+    issn_l                  VARCHAR,
+    country_code            VARCHAR,
+    is_oa                   BOOLEAN,
+    works_count             INTEGER,
+    cited_by_count          INTEGER,
+    created_at              TIMESTAMP(6),
+    updated_at              TIMESTAMP(6)
+)
+WITH (
+    format = 'PARQUET'
+);
+
+-- ─────────────────────────────────────────
+-- institutions — universities, companies,
+-- hospitals, institutes.
+-- Dimension table for affiliation analytics.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.institutions (
+    institution_id          VARCHAR,
+    display_name            VARCHAR,
+    country_code            VARCHAR,
+    institution_type        VARCHAR,
+    homepage_url            VARCHAR,
+    ror                     VARCHAR,
+    works_count             INTEGER,
+    cited_by_count          INTEGER,
+    created_at              TIMESTAMP(6),
+    updated_at              TIMESTAMP(6)
+)
+WITH (
+    format = 'PARQUET'
+);
+
+-- ─────────────────────────────────────────
+-- work_institutions — publication-affiliation
+-- bridge. Partitioned by publication_year so
+-- year-filtered institution queries prune files.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.work_institutions (
+    work_id                 VARCHAR,
+    author_id               VARCHAR,
+    institution_id          VARCHAR,
+    institution_name        VARCHAR,
+    country_code            VARCHAR,
+    author_position         VARCHAR,
+    publication_year        INTEGER,
+    publication_date        VARCHAR,
+    created_at              TIMESTAMP(6),
+    updated_at              TIMESTAMP(6)
+)
+WITH (
+    format       = 'PARQUET',
+    partitioning = ARRAY['publication_year']
+);
+
+-- ─────────────────────────────────────────
+-- citations — directed citation edges.
+-- One row means citing_work_id cites cited_work_id.
+-- Partitioned by citing_year for citation-window
+-- and forecasting queries.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.citations (
+    citing_work_id          VARCHAR,
+    cited_work_id           VARCHAR,
+    citing_year             INTEGER,
+    cited_year              INTEGER,
+    citation_age            INTEGER,
+    source_system           VARCHAR,
+    created_at              TIMESTAMP(6),
+    updated_at              TIMESTAMP(6)
+)
+WITH (
+    format       = 'PARQUET',
+    partitioning = ARRAY['citing_year']
+);
+
+-- ─────────────────────────────────────────
+-- topics — controlled topic/concept dimension.
+-- OpenAlex concepts/topics, internal clusters,
+-- or model-generated communities can map here.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.topics (
+    topic_id                VARCHAR,
+    display_name            VARCHAR,
+    domain                  VARCHAR,
+    field                   VARCHAR,
+    subfield                VARCHAR,
+    source_system           VARCHAR,
+    created_at              TIMESTAMP(6),
+    updated_at              TIMESTAMP(6)
+)
+WITH (
+    format = 'PARQUET'
+);
+
+-- ─────────────────────────────────────────
+-- work_topics — publication-topic bridge with
+-- confidence/score. Partitioned by publication_year
+-- for trend and topic-dynamics queries.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.work_topics (
+    work_id                 VARCHAR,
+    topic_id                VARCHAR,
+    display_name            VARCHAR,
+    score                   DOUBLE,
+    source_system           VARCHAR,
+    publication_year        INTEGER,
+    created_at              TIMESTAMP(6),
+    updated_at              TIMESTAMP(6)
+)
+WITH (
+    format       = 'PARQUET',
+    partitioning = ARRAY['publication_year']
+);
+
+-- ─────────────────────────────────────────
+-- documents — full-text/document availability
+-- and extraction state. Keep text payloads outside
+-- the hot metadata table.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.documents (
+    document_id             VARCHAR,
+    work_id                 VARCHAR,
+    source_system           VARCHAR,
+    landing_page_url        VARCHAR,
+    pdf_url                 VARCHAR,
+    text_object_path        VARCHAR,
+    license                 VARCHAR,
+    is_publicly_shareable   BOOLEAN,
+    extraction_status       VARCHAR,
+    publication_year        INTEGER,
+    created_at              TIMESTAMP(6),
+    updated_at              TIMESTAMP(6)
+)
+WITH (
+    format       = 'PARQUET',
+    partitioning = ARRAY['publication_year']
+);
+
+-- ─────────────────────────────────────────
+-- provenance_events — trace each derived row back
+-- to source system, record, license and pipeline.
+-- This supports auditability and ERC trust goals.
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS iceberg.scisci.provenance_events (
+    event_id                VARCHAR,
+    entity_type             VARCHAR,
+    entity_id               VARCHAR,
+    source_system           VARCHAR,
+    source_record_id        VARCHAR,
+    source_url              VARCHAR,
+    license                 VARCHAR,
+    payload_hash            VARCHAR,
+    pipeline_version        VARCHAR,
+    ingested_at             TIMESTAMP(6),
+    ingested_date           DATE
+)
+WITH (
+    format = 'PARQUET'
+);

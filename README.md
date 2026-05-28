@@ -45,7 +45,22 @@ make logs          # tail all logs
 make status        # show container health
 make shell-trino   # open Trino CLI
 make shell-postgres # open psql
+make init-schema   # create Iceberg SciSci tables
+make seed          # insert demo SciSci data with batched Trino inserts
+make benchmark     # compare Iceberg+Trino with PostgreSQL baseline
 ```
+
+Python helpers need:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Architecture And Research Notes
+
+- [Lakehouse architecture](docs/architecture.md) contains the runtime diagram, ER diagram, schema layers, performance improvements and benchmark matrix.
+- [Research position](docs/research-position.md) explains the novelty against existing SciSci tools and frames the supervisor-required PostgreSQL comparison as a research experiment.
+- [Supervisor demo guide](docs/supervisor-demo-guide.md) is a short explanation and talk track for demonstrating the prototype.
 
 ## First Query
 
@@ -68,6 +83,20 @@ INSERT INTO iceberg.demo.publications VALUES
 SELECT * FROM iceberg.demo.publications WHERE year = 2022;
 ```
 
+## Seed Data
+
+Use the staged seeder. It streams rows into PostgreSQL with `COPY`, then loads Iceberg with bulk `INSERT SELECT` queries through Trino:
+
+```bash
+py -3.12 scripts/seed.py --works 10000 --replace-iceberg --optimize
+```
+
+For a larger demo:
+
+```bash
+py -3.12 scripts/seed.py --works 100000 --authors 20000 --institutions 5000 --sources 1000 --topics 500 --replace-iceberg --optimize
+```
+
 ## Project Layout
 
 ```
@@ -76,6 +105,9 @@ SELECT * FROM iceberg.demo.publications WHERE year = 2022;
 ├── .env.example          ← commit this
 ├── .env                  ← DO NOT commit (gitignored)
 ├── Makefile
+├── scripts/
+│   ├── seed.py
+│   └── benchmark.py
 └── conf/
     ├── postgres/
     │   └── init.sql      ← creates the nessie DB on first boot
