@@ -1,0 +1,162 @@
+services:
+
+  # ─────────────────────────────────────────
+  # MinIO – S3-compatible object storage
+  # ─────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD};
+        mc mb --ignore-existing local/iceberg;
+        mc mb --ignore-existing local/warehouse;
+        echo 'Buckets ready.';
+      "
+
+  # ─────────────────────────────────────────
+  # PostgreSQL – relational DB + Nessie backend
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5432:5432"   # bind to localhost only – not exposed externally
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./conf/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────
+  # Nessie – Iceberg REST catalog
+  # Backed by PostgreSQL for persistent metadata
+  # ─────────────────────────────────────────
+  nessie:
+    image: ghcr.io/projectnessie/nessie:0.99.0
+    container_name: nessie
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:19120:19120"   # localhost only
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      # Persist catalog metadata in PostgreSQL instead of in-memory
+      nessie.version.store.type: JDBC
+      nessie.version.store.persist.jdbc.datasource: postgresql
+      quarkus.datasource.postgresql.jdbc.url: jdbc:postgresql://postgres:5432/${NESSIE_DB}
+      quarkus.datasource.postgresql.username: ${POSTGRES_USER}
+      quarkus.datasource.postgresql.password: ${POSTGRES_PASSWORD}
+      # Warehouse
+      nessie.catalog.default-warehouse: warehouse
+      nessie.catalog.warehouses.warehouse.location: "s3://iceberg/"
+      # S3 / MinIO
+      nessie.catalog.service.s3.default-options.endpoint: "http://minio:9000/"
+      nessie.catalog.service.s3.default-options.path-style-access: "true"
+      nessie.catalog.service.s3.default-options.region: us-east-1
+      nessie.catalog.service.s3.default-options.auth-type: STATIC
+      nessie.catalog.service.s3.default-options.access-key: "urn:nessie-secret:quarkus:nessie.catalog.secrets.access-key"
+      nessie.catalog.secrets.access-key.name: ${MINIO_ROOT_USER}
+      nessie.catalog.secrets.access-key.secret: ${MINIO_ROOT_PASSWORD}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19120/api/v2/config"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─────────────────────────────────────────
+  # Trino – distributed SQL query engine
+  # ─────────────────────────────────────────
+  trino:
+    image: trinodb/trino:435
+    container_name: trino
+    restart: unless-stopped
+    ports:
+      - "8080:8080"   # public – teammates connect here
+    depends_on:
+      nessie:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./conf/trino/catalog:/etc/trino/catalog:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/info"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+
+volumes:
+  minio_data:
+  postgres_data:
