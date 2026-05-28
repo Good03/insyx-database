@@ -56,12 +56,6 @@ Python helpers need:
 pip install -r requirements.txt
 ```
 
-## Architecture And Research Notes
-
-- [Lakehouse architecture](docs/architecture.md) contains the runtime diagram, ER diagram, schema layers, performance improvements and benchmark matrix.
-- [Research position](docs/research-position.md) explains the novelty against existing SciSci tools and frames the supervisor-required PostgreSQL comparison as a research experiment.
-- [Supervisor demo guide](docs/supervisor-demo-guide.md) is a short explanation and talk track for demonstrating the prototype.
-
 ## First Query
 
 ```sql
