@@ -19,6 +19,12 @@ git clone <repo-url> && cd <repo>
 cp .env.example .env
 # Edit .env and fill in your credentials
 
+python3 -m venv .venv
+
+source .venv/bin/activate
+
+pip3 install -r requirements.txt
+
 # 3. Start everything
 make up
 

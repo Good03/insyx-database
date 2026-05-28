@@ -1,6 +1,6 @@
 .PHONY: up down reset logs status shell-trino shell-postgres init-schema seed seed-small seed-100k seed-stage-only load-stage optimize counts benchmark benchmark-fast demo
 
-PY ?= py -3.12
+PY ?= python3
 WORKS ?= 100000
 AUTHORS ?= 20000
 INSTITUTIONS ?= 5000
