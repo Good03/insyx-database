@@ -1,0 +1,252 @@
+Slovak University of Technology in Bratislava Faculty of Informatics and Information Technologies
+Bc. Nikita Koliasnikov
+Lakehouse architektúra pre Science of Science: návrh databázového modelu a experimentálne
+hodnotenie výkonnosti dotazov
+Výskumný zámer
+Študijný program: Inteligentné softvérové systémy Study Field: Computer Science Vedúci projektu: Ing. Jaromír Klarák PhD. Pedagogický vedúci: Ing. Štefan Krištofík, PhD. November 2025
+Obsah
+1 Úvod 2
+2 Prehľad súčasného stavu problematiky 3 2.1 Oblasť výskumu: Science of Science a vedecké publikácie . . 3
+2.1.1 Úžšia oblasť výskumu: dátová infraštruktúra a lake-house architektúry . . . . . . . . . . . . . . . . . . . . 3
+2.2 Výberové inteligentné riešenie: distribuované SQL nad lake-house . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+2.3 Výberové inteligentné riešenie v oblasti výskumu . . . . . . 5 2.4 Zhrnutie . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+3 Východiskové body výskumu 6
+4 Realizácia 8 4.1 Plán realizácie . . . . . . . . . . . . . . . . . . . . . . . . . . . 8 4.2 Plán vyhodnotenia výsledkov . . . . . . . . . . . . . . . . . . 10 4.3 Podporné nástroje . . . . . . . . . . . . . . . . . . . . . . . . . 11
+5 Záver 11
+A Zadanie 13 A.1 Názov diplomovej práce v slovenčine . . . . . . . . . . . . . . 13
+1
+1 Úvod
+Science of Science (SciSci) je interdisciplinárna výskumná oblasť, ktorá sa snaží kvantitatívne pochopiť, ako vzniká, šíri sa a transformuje vedecké poznanie v čase a medzi komunitami výskumníkov. Vychádza z bibliomet-rie, scientometrie, analýzy sietí a metód umelej inteligencie a pracuje s rozsiahlymi dátovými súbormi publikácií, autorov, inštitúcií a citačných väzieb [1]. Exponenciálny nárast počtu vedeckých článkov a autorov záro-veň spôsobuje, že tradičné manuálne spôsoby tvorby prehľadových štúdií a mapovania stavu poznania prestávajú byť škálovateľné.
+V posledných rokoch sa objavili veľké otvorené databázy ako OpenAlex a CORE, ktoré sprístupňujú metaúdaje a v mnohých prípadoch aj plné texty vedeckých publikácií vo forme otvorených datasetov vhodných na masívne spracovanie [2, 3]. Tieto zdroje sú kľúčové pre projekty v oblasti Science of Science, pretože umožňujú analyzovať vývoj tém, citačné vzory, spoluprácu autorov a interdisciplinaritu naprieč celým vedným spektrom [4].
+Takéto ”vedecké big data“ však kladú vysoké nároky na dátovú in-fraštruktúru. V praxi ide o rádovo stovky miliónov záznamov publikácií, miliardy záznamov autorov a citačných hrán a milióny inštitúcií. Tradičné monolitické relačné databázy prestávajú stačiť z hľadiska škálovateľnosti aj nákladov na prevádzku. Na druhej strane, klasické data lake prístupy po-núkajú vysokú škálovateľnosť, ale často trpia slabšou podporou transakcií, inkonzistenciou schém a komplikovaným optimalizačným procesom pre SQL dotazy.
+Lakehouse architektúra sa snaží tieto dve paradigmy prepojiť: kombi-nuje lacné objektové úložisko (napr. S3 kompatibilné úložiská ako MinIO) s otvoreným tabuľkovým formátom (Apache Iceberg) a distribuovaným SQL enginom (Trino), pričom zachováva ACID vlastnosti, evolúciu schémy a pokročilé optimalizácie dotazov. Vďaka tomu je možné nad rovnakým fy-zickým úložiskom realizovať dávkové spracovanie dát, ako aj interaktívne analytické dotazy s nízkou latenciou.
+Cieľom tejto diplomovej práce je navrhnúť databázový model pre dáta z oblasti Science of Science v lakehouse architektúre postavenej na techno-lógiách PostgreSQL, MinIO, Apache Iceberg a Trino, pripraviť reprezenta-tívnu dátovú sadu založenú na reálnych open-source zdrojoch (OpenAlex, CORE a pod.) a experimentálne zhodnotiť výkonnosť vybraných typov do-tazov pri rôznych variantoch návrhu modelu (particionovanie, indexovanie, denormalizácia). Výsledkom má byť empiricky podložený súbor odporú-čaní, ktorý môže slúžiť ako návrhový vzor pre budúce SciSci projekty pra-cujúce s podobnými objemami dát.
+2
+2 Prehľad súčasného stavu problematiky
+V tejto kapitole sumarizujeme súčasný stav vo viacerých vrstvách: samotná oblasť Science of Science a dostupné dátové zdroje, dátové infraštruktúry a lakehouse architektúry, nástroje a metódy pre analytiku nad vedeckými dátami a identifikácia medzier, na ktoré sa zameria diplomová práca.
+2.1 Oblasť výskumu: Science of Science a vedecké publikácie
+Fortunato a kol. definujú Science of Science ako oblasť, ktorá spája metódy z fyziky, informatiky, sociológie a ekonómie s cieľom modelovať produkciu a šírenie vedeckého poznania na základe veľkých dát [1]. Typickými objektmi analýzy sú:
+
+    publikácie a ich metaúdaje (názov, abstrakt, kľúčové slová, časopis, rok publikovania),
+    autori a inštitúcie, ich spolupráce a mobilita,
+    citačné siete a odkazy medzi publikáciami,
+    tematické oblasti a ich vývoj v čase. 
+
+Pre tento typ výskumu sú kľúčové otvorené dátové zdroje. OpenAlex poskytuje jednotný index diel, autorov, časopisov, inštitúcií a konceptov s otvorenou licenciou, navrhnutý ako nástupca Microsoft Academic Graph [2]. CORE agreguje plné texty článkov z open-access repozitárov a časopi-sov, pričom ponúka aj bohaté metaúdaje a API pre hromadné sťahovanie [3]. Ďalšie projekty ako Open Research Knowledge Graph (ORKG) sa snažia re-prezentovať obsah článkov v štruktúrovanej podobe (graf znalostí) [5].
+Výskumy interdisciplinarity poukazujú na rastúcu prepojenosť medzi vednými odbormi a na potrebu pokročilých analytických nástrojov nad veľkými bibliografickými korpusmi [4]. To všetko zvyšuje nároky na dátové modelovanie a efektívnu dotazovaciu vrstvu.
+2.1.1 Úžšia oblasť výskumu: dátová infraštruktúra a lakehouse architek-túry
+Rozvoj big data ekosystémov priniesol dva dominantné prístupy:
+
+    Data warehouse – tradičné enterprise sklady (napr. Amazon Redshift, Snowflake) optimalizované pre analytické dotazy nad starostlivo mo-delovanými schémami (star/snowflake). Typicky bežia na vlastných proprietárnych enginoch.
+    Data lake – lacné objektové úložiská (napr. S3, HDFS) s voľnejšou schémou a súbormi vo formátoch Parquet/ORC. Dôraz na škálovate-ľnosť, ale slabšie záruky konzistencie a komplexnejších transakcií. 
+
+3
+Lakehouse architektúry kombinujú tieto dva prístupy prostredníctvom otvorených tabuľkových formátov (Delta Lake, Apache Iceberg, Apache Hudi), ktoré zapuzdrujú dátové súbory, metadáta, históriu verzií a transa-kčné logy. Apache Iceberg umožňuje:
+
+    ACID transakcie nad objektovým úložiskom,
+    evolúciu schémy bez potreby kompletnej migrácie dát,
+    partitioning a skryté partície (hidden partitioning),
+    podporu pre viaceré compute enginy (Trino, Spark, Flink). 
+
+MinIO predstavuje S3-kompatibilné objektové úložisko, ktoré je vhodné pre on-premise nasadenia a laboratórne prostredie. V kombinácii s Iceber-gom tvorí dátovú vrstvu lakehouse architektúry.
+2.2 Výberové inteligentné riešenie: distribuované SQL nad lake-house
+Trino (pôvodne PrestoSQL) je distribuovaný SQL engine navrhnutý na in-teraktívnu analytiku nad heterogénnymi dátovými zdrojmi. Podporuje ko-nektory pre objektové úložiská, relačné databázy, NoSQL systémy aj špe-ciálne formáty. Jeho architektúra umožňuje paralelné spracovanie dotazov na stovkách uzlov a bola nasadená vo viacerých veľkých priemyselných prostrediach.
+V kontexte lakehouse architektúr má Trino tieto výhody:
+
+    podporu pre Iceberg katalóg – vie priamo čítať Iceberg tabuľky ulo-žené v MinIO,
+    pokročilý plánovač a optimalizátor dotazov (prerezávanie partícií, predicate pushdown),
+    možnosť definovať materiálizované pohľady a views pre typické do-tazy,
+    horizontálnu škálovateľnosť počtu worker uzlov. 
+
+PostgreSQL v navrhovanej architektúre môže plniť viacero rolí:
+
+    systémový metastore pre Iceberg (katalóg a metadáta tabuliek),
+    referenčná implementácia relačného modelu (baseline pre porovnanie výkonu),
+    úložisko pre menšie, vysoko konzistentné tabuľky (konfigurácie, expe-rimentálne výsledky). 
+
+4
+2.3 Výberové inteligentné riešenie v oblasti výskumu
+V oblasti Science of Science existuje viacero projektov, ktoré stavajú nad bibliografickými databázami vizualizačné alebo analytické nástroje. Príkla-dom je VOSviewer, nástroj na mapovanie vedeckej literatúry, ktorý dokáže vytvárať co-citation, co-authorship a keyword mapy [6]. ORKG rozvíja my-šlienku štruktúrovaného grafu poznatkov nad vedeckými článkami [5]. Via-ceré práce kombinujú scientometrické metriky s embeddingami zo špeciali-zovaných jazykových modelov (napr. SciBERT) pri analýze tém a komunít.
+Spoločným znakom väčšiny týchto riešení je, že:
+
+    buď využívajú existujúce hostované databázové služby a nepublikujú detailný návrh dátového modelu,
+    alebo sa zameriavajú primárne na algoritmy a vizualizácie, nie na výkonnostné aspekty dotazovania nad globálnym korpusom. 
+
+Chýbajú systematické štúdie, ktoré by:
+
+    presne špecifikovali databázový model pre SciSci dáta v lakehouse architektúre,
+    experimentálne porovnali rôzne varianty schémy (normalizovaná vs. denormalizovaná),
+    kvantifikovali vplyv partitioningu a indexovacích techník na latenciu typických SciSci dotazov. 
+
+2.4 Zhrnutie
+Súčasný stav naznačuje, že:
+
+    existuje bohatý ekosystém otvorených dátových zdrojov pre Science of Science (OpenAlex, CORE, ORKG),
+    lakehouse architektúry (Iceberg, Delta Lake) sú v praxi čoraz rozšíre-nejšie, ale akademické štúdie často riešia generické big data scenáre, nie špecificky SciSci,
+    nástroje pre bibliometrickú a scientometrickú analýzu väčšinou ne-publikujú detailný návrh svojej infraštruktúry ani výkonnostné cha-rakteristiky. 
+
+Medzera, ktorú sa táto práca snaží zaplniť, spočíva v systematickom návrhu a experimentálnom hodnotení databázového modelu pre Science of Science nad lakehouse architektúrou postavenou na PostgreSQL, MinIO, Apache Iceberg a Trino, s dôrazom na latenciu dotazov a odporúčania pre praktické nasadenie.
+5
+3 Východiskové body výskumu
+Na základe analýzy súčasného stavu a formulovaného zadania navrhujem nasledujúce ciele a výskumné otázky diplomovej práce.
+Hlavný cieľ
+Navrhnúť, implementovať a experimentálne vyhodnotiť databázový model v lakehouse architektúre pre dáta z oblasti Science of Science tak, aby umo-žňoval efektívne vykonávanie reprezentatívnych analytických dotazov nad rozsiahlymi bibliografickými datasetmi.
+Ďalšie ciele
+
+    Analyzovať štruktúru SciSci dát (OpenAlex, CORE, prípadné dopln-kové zdroje) a identifikovať kľúčové entity (publikácie, autori, inštitú-cie, citačné väzby) a ich vzťahy.
+    Navrhnúť jednu alebo viac variantov databázového modelu (normali-zovaná schéma, denormalizovaná/star-schema) pre lakehouse archi-tektúru.
+    Definovať sadu reprezentatívnych dotazov (podľa rokov, autorov, inšti-túcií, citovanosti, typov publikácií) a zmerať ich latenciu pri rôznych variantoch schémy a konfigurácie.
+    Vypracovať odporúčania pre návrh schémy, partitioning, indexovanie a denormalizáciu v kontexte SciSci dát a lakehouse architektúr. 
+
+Výskumné otázky
+1. VO1: Aký databázový model (kombinácia faktových a dimenzionál-nych tabuliek, stupeň normalizácie) je vhodný pre typické SciSci do-tazy nad údajmi z OpenAlex/CORE?
+H1: Kombinácia hviezdicovej schémy s jednou centrálnou faktovou tabuľkou publikácií a slabo normalizovanými dimenziami (autori, inštitúcie, čas, zdroje) poskytuje najlepší kompromis medzi flexibili-tou analytických SciSci dotazov a ich výkonom, pričom plne norma-lizovaný model vedie k vyššej latencii v dôsledku náročných joinov.
+2. VO2: Ako voľba partitioningu (napr. podľa roku publikácie, časopisu, inštitúcie či kombinácie) ovplyvňuje latenciu analytických dotazov v Iceberg + Trino?
+H2: Partitioning faktovej tabuľky primárne podľa roku publikácie a se-kundárne podľa tematickej alebo geografickej dimenzie (napr. časopis
+6
+alebo inštitúcia) významne znižuje latenciu typických SciSci dotazov v Trino, zatiaľ čo príliš jemnozrnný alebo kombinovaný partitioning zvyšuje režijné náklady plánovania dotazov.
+3. VO3: Aký vplyv má denormalizácia vybraných častí schémy (napr. vloženie zoznamu autorov priamo do faktovej tabuľky) na výkon do-tazov?
+H3: Cielená denormalizácia vybraných atribútov (napr. zoznam auto-rov alebo inštitúcií uložený priamo vo faktovej tabuľke) vedie k cite-ľnému zlepšeniu výkonu agregovaných analytických dotazov, avšak za cenu vyššej spotreby úložiska a obmedzenej flexibility pri kom-plexných relačných analýzach.
+4. VO4: Aké indexovacie alebo optimalizačné mechanizmy (napr. skryté partície, štatistiky, materiálizované pohľady) prinášajú najväčší prínos pri typických SciSci dotazoch?
+H4: Najväčší výkonový prínos pre typické SciSci dotazy prinášajú skryté partície a štatistiky v Apache Iceberg, doplnené o selektívne použitie materiálizovaných pohľadov, pričom tradičné indexovanie zohráva v lakehouse prostredí sekundárnu úlohu.
+5. VO5: Do akej miery je navrhnuté riešenie škálovateľné smerom k reál-nym objemom dát (rádovo stovky miliónov publikácií) a aké kompro-misy je potrebné urobiť medzi latenciou, spotrebou zdrojov a kom-plexitou implementácie?
+H5: Navrhnuté lakehouse riešenie založené na Iceberg + Trino je šká-lovateľné na úroveň stoviek miliónov publikácií, avšak dosiahnutie prijateľnej latencie si vyžaduje kompromisy vo forme vyššej denor-malizácie, agresívneho partitioningu a zvýšenej spotreby výpočto-vých zdrojov, čo zároveň zvyšuje komplexitu implementácie a údržby systému.
+Funkcionálne a nefunkcionálne špecifikácie
+s nasledujúcimi potenciálnymi špecifikáciami:
+
+    Funkcionálne: 
+
+– systém umožňuje načítať dáta z OpenAlex (aspoň podmnožinu works, authors, institutions) a uložiť ich do Iceberg tabuliek,
+– nad vytvoreným modelom je možné vykonávať SQL dotazy v Trino podľa definovanej sady scenárov,
+– merania latencie a priepustnosti sú opakovateľné a konfigurova-teľné (parametrizácia počtu workerov, veľkosti datasetu a pod.).
+7
+
+    Nefunkcionálne: 
+
+– cieľová latencia pre zvolené interaktívne dotazy by mala byť v rozsahu jednotiek až desiatok sekúnd,
+– riešenie by malo byť nasaditeľné na bežnom akademickom/hybridnom clustri (on-premise + MinIO),
+– architektúra by mala byť dokumentovaná tak, aby bolo možné ju zreprodukovať a rozširovať v budúcich projektoch.
+4 Realizácia
+4.1 Plán realizácie
+Plán realizácie je rozdelený na tri semestre (DP1, DP2, DP3), pričom každý semester má jasne vymedzené výstupy.
+DP1 – Analýza a návrh (1. semester)
+
+    Analýza domény a dát: 
+
+– podrobná analýza štruktúry OpenAlex (works, authors, institu-tions, concepts) a dostupných exportov,
+– preskúmanie možností CORE (prístup k plným textom vs. meta-údajom),
+– identifikácia minimálnej podmnožiny atribútov potrebnej pre SciSci dotazy (ID, názov, rok, časopis, zoznam autorov, inštitúcie, počet citácií, koncepty).
+
+    Návrh databázového modelu: 
+
+– návrh logického modelu – entitno-relačný diagram (publikácia, autor, inštitúcia, citačná hrana),
+– identifikácia faktových tabuliek (publikácie, citácie) a dimenzií (autor, inštitúcia, časopis, rok),
+– návrh variantov schémy: normalizovaná vs. denormalizovaná/star-schema.
+
+    Návrh architektúry: 
+
+– výber a inštalácia MinIO ako S3-kompatibilného úložiska,
+– konfigurácia PostgreSQL ako metastore pre Iceberg,
+– návrh nasadenia Trino (coordinator + workeri),
+– návrh základného postupu (Python + SQL) pre načítanie dát do Iceberg tabuliek.
+8
+
+    Výstup DP1: spracovaná analýza, návrh databázového modelu, ná-vrh architektúry a prototyp malého datasetu (napr. jedna disciplína, niekoľko stotisíc publikácií). 
+
+DP2 – Implementácia a príprava experimentov (2. semester)
+
+    Konfigurácia a tuning Trino: 
+
+– nastavenie konektorov pre Iceberg a PostgreSQL,
+– konfigurácia parallelizmu, veľkosti fragmentov a ďalších para-metrov výkonnosti,
+– overenie, že všetky plánované dotazy sú vykonateľné a dávajú korektné výsledky.
+
+    Definícia scenárov dotazov: 
+
+– dotazy agregujúce publikácie podľa roku, inštitúcie, časopisu, konceptu,
+– dotazy analyzujúce citačnú distribúciu (top citované práce, h-index na úrovni inštitúcie),
+– dotazy pre výber sub-sietí (napr. spolupráce medzi dvoma inšti-túciami v danej perióde).
+
+    Nastavenie benchmarkov: 
+
+– implementácia jednoduchého nástroja na spúšťanie dotazov a meranie latencie (napr. Python skript s opakovaným spúšťaním a logovaním výsledkov),
+– príprava experimentálnych konfigurácií (rôzne partitioning stra-tégie, veľkosti datasetov).
+
+    Výstup DP2: funkčný prototyp lakehouse infraštruktúry s naplneným datasetom a definovanou sadou benchmark dotazov. 
+
+DP3 – Experimentálne hodnotenie a vyhodnotenie (3. semester)
+
+    Realizácia experimentov: 
+
+– spustenie sady dotazov pre jednotlivé varianty schémy (norma-lizovaná vs. denormalizovaná),
+– porovnanie rôznych partitioning stratégií (podľa roku, podľa ča-sopisu, kombinované),
+– experimenty s rôznymi nastaveniami Trino (počet workerov, li-mity pamäte).
+
+    Zhromaždenie a analýza výsledkov: 
+
+9
+– štatistické vyhodnotenie latencií (priemer, medián, P90, P99),
+– vizualizácie (grafy závislosti latencie od veľkosti datasetu, typu dotazu, partitioningu),
+– diskusia kompromisov medzi čitateľnosťou schémy a výkonno-sťou dotazov.
+
+    Formulácia odporúčaní: 
+
+– odporúčané schémy a partitioning pre SciSci scenáre,
+– odporúčania pre konfiguráciu Trino a nastavenie Iceberg tabu-liek,
+– identifikácia limitov riešenia (napr. pri škálovaní na plný Ope-nAlex).
+
+    Výstup DP3: kompletná diplomová práca, vrátane dokumentácie expe-rimentov, výsledkov a odporúčaní. 
+
+4.2 Plán vyhodnotenia výsledkov
+Vyhodnotenie bude založené na kombinácii kvantitatívnych metrík a kva-litatívneho posúdenia navrhnutého modelu.
+
+    Výkonnostné metriky: 
+
+– latencia dotazov (v sekundách) – priemerná, mediánová, percen-tilové hodnoty (P90, P95),
+– priepustnosť (počet dotazov za minútu pri paralelnom behu),
+– využitie zdrojov (CPU, RAM) počas spúšťania dotazov.
+
+    Metriky kvality modelu: 
+
+– zrozumiteľnosť a rozšíriteľnosť schémy (posúdená vedúcim práce),
+– miera závislosti na konkrétnych technológiách (prenositeľnosť konceptu).
+
+    Porovnanie s baseline: 
+
+– vybraná podmnožina dotazov môže byť spustená aj na refere-nčnej PostgreSQL inštalácii (bez Iceberg/Trino) pre ilustráciu rozdielov v latencii a možnostiach škálovania,
+– diskusia, pri akom objeme dát sa lakehouse prístup začne vý-razne prejavovať oproti klasickému relačnému prístupu.
+10
+4.3 Podporné nástroje
+
+    Komunikácia: Microsoft Teams / e-mail s vedúcim práce.
+    Správa kódu: GitLab alebo GitHub repozitár .
+    Príprava dokumentácie: Overleaf / lokálny LaTeX.
+    Programovací jazyk: Python, prípadne Bash pre automatizáciu.
+    Dátové technológie: PostgreSQL, MinIO, Apache Iceberg, Trino. 
+
+5 Záver
+V predloženom výskumnom zámere bol definovaný problém efektívnej dátovej infraštruktúry pre Science of Science v kontexte veľkých bibliogra-fických datasetov. Bola identifikovaná medzera medzi dostupnosťou otvo-rených dát (OpenAlex, CORE) a nedostatkom systematických štúdií o tom, ako tieto dáta efektívne ukladať a dotazovať v lakehouse architektúre s nízkou latenciou.
+Navrhovaná diplomová práca sa zameriava na návrh, implementáciu a experimentálne vyhodnotenie databázového modelu nad technológiami PostgreSQL, MinIO, Apache Iceberg a Trino. Konkrétne výskumné otázky sa týkajú voľby schémy, partitioningu, denormalizácie a optimalizačných techník. V časti Realizácia je načrtnutý plán práce rozdelený do troch semes-trov, vrátane prípravy dát, konfigurácie infraštruktúry a experimentálneho hodnotenia výkonnosti.
+Očakávaným prínosom je súbor empiricky podložených odporúčaní pre návrh databázových modelov a dotazovacích stratégií v lakehouse ar-chitektúrach pre SciSci. Tieto odporúčania môžu byť následne využité v širších projektoch zameraných na automatizovanú analýzu vedeckej litera-túry, scientometrické štúdie či budovanie komplexných systémov pre pod-poru výskumníkov pri orientácii v rýchlo rastúcom korpuse vedeckých publikácií.
+Literatúra
+[1] Santo Fortunato et al. “Science of Science”. In: Science 359.6379 (2018), eaao0185. DOI: 10.1126/science.aao0185.
+[2] Jason Priem, Heather Piwowar a Richard Orr. “OpenAlex: A fully-open index of scholarly works, authors, venues, institutions, and concepts”. In: arXiv preprint (2022). arXiv: 2205.01833.
+11
+[3] Petr Knoth et al. “CORE: A Global Aggregation Service for Open Access Papers”. In: Scientific Data 10.1 (2023), s. 1–19. DOI: 10.1038/s41597-023-02208-w.
+[4] Filipi N. Silva et al. “Quantifying the interdisciplinarity of scientific journals and fields”. In: Journal of Informetrics 7.3 (2013), s. 469–477. DOI: 10.1016/j.joi.2013.01.007.
+[5] Sherzod Hakimov Jaradeh, Sören Auer et al. “Open Research Kno-wledge Graph: Next Generation Infrastructure for Semantic Scholarly Knowledge”. In: Proceedings of the 10th International Conference on Kno-wledge Capture (K-CAP 2019). 2019, s. 243–246. DOI: 10.1145/3360901. 3364435.
+[6] Nees Jan van Eck a Ludo Waltman. “Software survey: VOSviewer, a computer program for bibliometric mapping”. In: Scientometrics 84.2 (2010), s. 523–538. DOI: 10.1007/s11192-009-0146-3.
+12
+A Zadanie
+Vedúci DP: Ing. Jaromír Klarák, PhD. Pedagogický vedúci: Ing. Štefan Krištofík, PhD. Diplomant: Bc. Nikita Koliasnikov
+Oblasť problematiky: Science of Science, big data, lakehouse architek-túra.
+A.1 Názov diplomovej práce v slovenčine
+Lakehouse architektúra pre Science of Science: návrh databázového modelu a expe-rimentálne hodnotenie výkonnosti dotazov
+Cieľom práce je navrhnúť databázový model pre dáta z oblasti Science of Science (publikácie, autori, inštitúcie, citačné väzby) v rámci lakehouse architektúry a experimentálne zhodnotiť výkonnosť vybraných typov do-tazov nad veľkým objemom dát.
+Analyzujte dostupné otvorené dátové zdroje (napr. OpenAlex, CORE) a súčasné prístupy k ukladaniu a spracovaniu vedeckých publikácií v kon-texte Science of Science. Zamerajte sa na požiadavky na veľkosť dát, typické dotazy a potrebu nízkej latencie.
+Navrhnite databázový model a architektúru na báze technológií Postgre-SQL, MinIO, Apache Iceberg a Trino v štýle lakehouse. Špecifikujte varianty schémy (normalizovaná/denormalizovaná), strategické partitionovanie a predpokladané optimalizačné techniky.
+Implementujte prototyp dátovej infraštruktúry, pripravte reprezenta-tívnu dátovú sadu (rádovo desiatky až stovky miliónov záznamov v zjedno-dušenej podobe) a vyhodnoťte výkonnosť vybraných typov dotazov. Zme-rajte latenciu a priepustnosť pri rôznych variantoch návrhu modelu, analy-zujte výsledky a formulujte odporúčania pre návrh databázových modelov a optimalizáciu dotazov v lakehouse architektúrach pre Science of Science.
+References: 1. Jaromir Klarak; Vitor H. B. D Santi, Luan F. Moreira, Robert Andok, Maria Bardosova, Maria Cristina F. Oliveira, and Osvaldo N. Oliveira. The Landscape of Wearable Sensors and Automated Literature Analysis with Large-Language Models in ACS Omega, DOI: 10.1021/acsomega.5c04542. 2. Hosen, M. S., Islam, R., Naeem, Z., Folorunso, E. O., Chu, T. S., Al Mamun, M. A., & Orunbon, N. O. (2024). Data-driven decision making: Advanced database systems for business intelligence. Nanotechnology Perceptions, 20(3), 687-704.
+13
+3. Pasham, S. D. (2024). Scalable Graph-Based Algorithms for Real-Time Analysis of Big Data in Social Networks. The Metascience, 2(1), 92-129.
+14

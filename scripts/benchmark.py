@@ -61,7 +61,7 @@ def postgres_connection(psycopg_mod: Any):
     return psycopg_mod.connect(
         host=os.getenv("PGHOST", "localhost"),
         port=int(os.getenv("PGPORT", "5432")),
-        dbname=os.getenv("POSTGRES_DB", "appdb"),
+        dbname=os.getenv("POSTGRES_DB", "scisci_lakehouse"),
         user=os.getenv("POSTGRES_USER", "admin"),
         password=os.getenv("POSTGRES_PASSWORD", "password123"),
     )
@@ -79,7 +79,7 @@ def prepare_postgres(pg_conn: Any, trino_cur: Any, limit: int) -> None:
         trino_cur,
         """
         SELECT id, doi, title, publication_year, publication_date, type, language,
-               cited_by_count, referenced_works_count, domain, field, subfield,
+               cited_by_count, referenced_works_count, domain, field_name, subfield,
                primary_topic, is_oa, source_id, source_name, source_type, num_authors
         FROM iceberg.scisci.works
         """
@@ -150,7 +150,7 @@ def prepare_postgres(pg_conn: Any, trino_cur: Any, limit: int) -> None:
                 cited_by_count INTEGER,
                 referenced_works_count INTEGER,
                 domain TEXT,
-                field TEXT,
+                field_name TEXT,
                 subfield TEXT,
                 primary_topic TEXT,
                 is_oa BOOLEAN,

@@ -1,6 +1,8 @@
-.PHONY: up down reset logs status shell-trino shell-postgres init-schema seed seed-small seed-100k seed-stage-only load-stage optimize counts benchmark benchmark-fast demo
+.PHONY: up down reset logs status shell-trino shell-postgres init-schema seed seed-small seed-100k seed-json seed-json-stage-only seed-stage-only load-stage optimize seed-postgres-json seed-postgres-small counts benchmark benchmark-fast demo
 
-PY ?= py -3.12
+PY ?= py
+INPUT_JSON ?= ai_subfield_100k_all_columns.json
+POSTGRES_ONLY_DB ?= scisci_postgres
 WORKS ?= 100000
 AUTHORS ?= 20000
 INSTITUTIONS ?= 5000
@@ -53,6 +55,22 @@ seed-small:
 seed-100k:
 	$(PY) scripts/seed.py --works 100000 --authors 20000 --institutions 5000 --sources 1000 --topics 500 --replace-iceberg --optimize
 
+# Load the OpenAlex all-columns JSON export into PostgreSQL staging and Iceberg
+seed-json:
+	$(PY) scripts/seed.py --input-json $(INPUT_JSON) --replace-iceberg --optimize
+
+# Generate and copy the JSON export to PostgreSQL staging only, no Iceberg load
+seed-json-stage-only:
+	$(PY) scripts/seed.py --input-json $(INPUT_JSON) --skip-iceberg-load
+
+# Load OpenAlex JSON into the PostgreSQL-only SciSci database. No Trino or Iceberg is used.
+seed-postgres-json:
+	$(PY) scripts/seed_postgres.py --input-json $(INPUT_JSON) --pg-db $(POSTGRES_ONLY_DB) --replace
+
+# PostgreSQL-only import smoke test.
+seed-postgres-small:
+	$(PY) scripts/seed_postgres.py --input-json $(INPUT_JSON) --input-limit 1000 --pg-db $(POSTGRES_ONLY_DB) --replace
+
 # Generate and copy to PostgreSQL staging only, no Iceberg load
 seed-stage-only:
 	$(PY) scripts/seed.py --works $(WORKS) --authors $(AUTHORS) --institutions $(INSTITUTIONS) --sources $(SOURCES) --topics $(TOPICS) --skip-iceberg-load
@@ -63,7 +81,7 @@ load-stage:
 
 # Compact Iceberg small files after appends or experiments
 optimize:
-	docker exec trino trino --execute "ALTER TABLE iceberg.scisci.works EXECUTE optimize; ALTER TABLE iceberg.scisci.work_authors EXECUTE optimize; ALTER TABLE iceberg.scisci.work_institutions EXECUTE optimize; ALTER TABLE iceberg.scisci.work_topics EXECUTE optimize; ALTER TABLE iceberg.scisci.citations EXECUTE optimize;"
+	$(PY) scripts/seed.py --optimize-only
 
 # Show main table counts from Iceberg
 counts:

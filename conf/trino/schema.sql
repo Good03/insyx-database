@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS iceberg.scisci.works (
     doi                     VARCHAR,
     -- Content
     title                   VARCHAR,
-    abstract                VARCHAR,
     publication_year        INTEGER,
     publication_date        VARCHAR,
     type                    VARCHAR,
@@ -27,38 +26,47 @@ CREATE TABLE IF NOT EXISTS iceberg.scisci.works (
     referenced_works_count  INTEGER,
     -- Classification
     domain                  VARCHAR,
-    field                   VARCHAR,
+    field_name              VARCHAR,
     subfield                VARCHAR,
     primary_topic           VARCHAR,
     topics                  VARCHAR,    -- "Topic1, Topic2, Topic3"
     concepts                VARCHAR,    -- "Concept1, Concept2"
-    concepts_full           VARCHAR,    -- full JSON string
+    concepts_full           VARCHAR,
     keywords                VARCHAR,    -- "kw1, kw2, kw3"
-    keywords_full           VARCHAR,    -- full JSON string
+    keywords_full           VARCHAR,
     -- References
-    references_full         VARCHAR,    -- full JSON string
+    references_full         VARCHAR,
     related_full            VARCHAR,
     -- Open access
+    license                 VARCHAR,
+    pdf_url                 VARCHAR,
+    abstract                VARCHAR,
     is_oa                   BOOLEAN,
     oa_url                  VARCHAR,
-    pdf_url                 VARCHAR,
-    license                 VARCHAR,
     -- Source / journal
     source_id               VARCHAR,
     source_name             VARCHAR,
     source_type             VARCHAR,
     -- Authors (denormalized flat copy for fast queries)
-    num_authors             INTEGER,
     authors                 VARCHAR,    -- "John Smith; Jane Doe"
     author_ids              VARCHAR,    -- "A123; A456"
-    full_authors_info       VARCHAR,    -- full JSON string
+    num_authors             INTEGER,
+    full_authors_info       VARCHAR,
     -- APC
     apc_currency            VARCHAR,
     apc_value               DOUBLE,
     apc_usd                 DOUBLE,
+    -- Funding
+    funders                 VARCHAR,
+    grants                  VARCHAR,
     -- Timestamps
     created_at              TIMESTAMP(6),
-    updated_at              TIMESTAMP(6)
+    updated_at              TIMESTAMP(6),
+    -- Source details / derived fields from the all-columns export
+    source_host_name        VARCHAR,
+    source_issn             VARCHAR,
+    cited_by_count_int      INTEGER,
+    embedding               VARCHAR
 )
 WITH (
     format       = 'PARQUET',
@@ -123,6 +131,7 @@ CREATE TABLE IF NOT EXISTS iceberg.scisci.sources (
     source_type             VARCHAR,
     publisher               VARCHAR,
     issn_l                  VARCHAR,
+    host_name               VARCHAR,
     country_code            VARCHAR,
     is_oa                   BOOLEAN,
     works_count             INTEGER,
@@ -207,7 +216,7 @@ CREATE TABLE IF NOT EXISTS iceberg.scisci.topics (
     topic_id                VARCHAR,
     display_name            VARCHAR,
     domain                  VARCHAR,
-    field                   VARCHAR,
+    field_name              VARCHAR,
     subfield                VARCHAR,
     source_system           VARCHAR,
     created_at              TIMESTAMP(6),

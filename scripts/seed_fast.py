@@ -124,7 +124,7 @@ def build_data(args: argparse.Namespace) -> dict[str, list[tuple[Any, ...]]]:
             "topic_id": f"T{idx + 1:07d}",
             "display_name": f"{random.choice(FIELDS)} {random.choice(SUBFIELDS)}",
             "domain": random.choice(DOMAINS),
-            "field": random.choice(FIELDS),
+            "field_name": random.choice(FIELDS),
             "subfield": random.choice(SUBFIELDS),
             "source_system": "mock",
         }
@@ -167,7 +167,7 @@ def build_data(args: argparse.Namespace) -> dict[str, list[tuple[Any, ...]]]:
                 "cited_by_count": random.randint(0, 500),
                 "referenced_works_count": random.randint(5, 60),
                 "domain": primary_topic["domain"],
-                "field": primary_topic["field"],
+                "field_name": primary_topic["field_name"],
                 "subfield": primary_topic["subfield"],
                 "primary_topic": primary_topic["display_name"],
                 "is_oa": random.choice([True, False]),
@@ -212,7 +212,7 @@ def build_data(args: argparse.Namespace) -> dict[str, list[tuple[Any, ...]]]:
                 work["cited_by_count"],
                 work["referenced_works_count"],
                 work["domain"],
-                work["field"],
+                work["field_name"],
                 work["subfield"],
                 work["primary_topic"],
                 work["is_oa"],
@@ -363,7 +363,7 @@ def build_data(args: argparse.Namespace) -> dict[str, list[tuple[Any, ...]]]:
             topic["topic_id"],
             topic["display_name"],
             topic["domain"],
-            topic["field"],
+            topic["field_name"],
             topic["subfield"],
             topic["source_system"],
         )
@@ -410,7 +410,7 @@ def main() -> int:
                 "cited_by_count",
                 "referenced_works_count",
                 "domain",
-                "field",
+                "field_name",
                 "subfield",
                 "primary_topic",
                 "is_oa",
@@ -445,7 +445,7 @@ def main() -> int:
         insert_rows(
             cur,
             "topics",
-            ["topic_id", "display_name", "domain", "field", "subfield", "source_system"],
+            ["topic_id", "display_name", "domain", "field_name", "subfield", "source_system"],
             data["topics"],
             args.batch_size,
         )

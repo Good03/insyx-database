@@ -13,11 +13,17 @@ Thesis: *Lakehouse Architecture for Science of Science: Database Model Design an
 
 ```bash
 # 1. Clone the repo
-git clone <repo-url> && cd <repo>
+git clone https://github.com/Good03/insyx-database.git && cd insyx-database
 
 # 2. Create your local secrets file
 cp .env.example .env
 # Edit .env and fill in your credentials
+
+python3 -m venv .venv
+
+source .venv/bin/activate
+
+pip3 install -r requirements.txt
 
 # 3. Start everything
 make up
@@ -79,16 +85,50 @@ SELECT * FROM iceberg.demo.publications WHERE year = 2022;
 
 ## Seed Data
 
-Use the staged seeder. It streams rows into PostgreSQL with `COPY`, then loads Iceberg with bulk `INSERT SELECT` queries through Trino:
+The lakehouse seeder uses `scisci_lakehouse`. It streams rows into PostgreSQL with `COPY`, then loads Iceberg with bulk `INSERT SELECT` queries through Trino:
 
 ```bash
-py -3.12 scripts/seed.py --works 10000 --replace-iceberg --optimize
+py scripts/seed.py --works 10000 --replace-iceberg --optimize
 ```
 
 For a larger demo:
 
 ```bash
-py -3.12 scripts/seed.py --works 100000 --authors 20000 --institutions 5000 --sources 1000 --topics 500 --replace-iceberg --optimize
+py scripts/seed.py --works 100000 --authors 20000 --institutions 5000 --sources 1000 --topics 500 --replace-iceberg --optimize
+```
+
+To load the OpenAlex AI subfield export with all work columns:
+
+```bash
+py scripts/seed.py --input-json ai_subfield_100k_all_columns.json --replace-iceberg --optimize
+```
+
+## PostgreSQL-Only Mode
+
+`scisci_postgres` is an independent relational implementation. It does not use
+Trino, Iceberg, MinIO, or the `scisci_lakehouse` staging database. The importer
+creates the normalized `scisci` schema, bulk-loads the export with PostgreSQL
+`COPY`, and builds indexes after loading:
+
+```bash
+make seed-postgres-json
+```
+
+For a 1,000-record smoke test:
+
+```bash
+make seed-postgres-small
+```
+
+The `works` table follows the export shape, including `field_name`, concepts,
+keywords, funding, source host/ISSN, and embedding text. The loader also derives
+sources, authors, institutions, citations, documents, topics, and work-topic
+bridges where the JSON contains enough information.
+
+For a quick parser check without touching PostgreSQL or Iceberg:
+
+```bash
+py scripts/seed.py --input-json ai_subfield_100k_all_columns.json --input-limit 1000 --skip-postgres-copy
 ```
 
 ## Project Layout
