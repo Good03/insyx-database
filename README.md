@@ -19,11 +19,11 @@ git clone https://github.com/Good03/insyx-database.git && cd insyx-database
 cp .env.example .env
 # Edit .env and fill in your credentials
 
-python3 -m venv .venv
+uv venv .venv
 
 source .venv/bin/activate
 
-pip3 install -r requirements.txt
+uv pip install -r requirements.txt
 
 # 3. Start everything
 make up
@@ -59,7 +59,7 @@ make benchmark     # compare Iceberg+Trino with PostgreSQL baseline
 Python helpers need:
 
 ```bash
-pip install -r requirements.txt
+uv pip install -r requirements.txt
 ```
 
 ## First Query

@@ -286,7 +286,7 @@ def trino_connect(args: argparse.Namespace):
     try:
         import trino
     except ImportError as exc:
-        raise SystemExit("Install the lakehouse dependencies with: pip install -r requirements.txt") from exc
+        raise SystemExit("Install the lakehouse dependencies with: uv pip install -r requirements.txt") from exc
     return trino.dbapi.connect(host=args.trino_host, port=args.trino_port, user="seed_stage")
 
 

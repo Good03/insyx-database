@@ -2,7 +2,7 @@
 Benchmark Iceberg+Trino against plain PostgreSQL for SciSci queries.
 
 Usage:
-    pip install trino psycopg[binary]
+    uv pip install -r requirements.txt
     python scripts/benchmark.py --runs 5
 
 The script copies the current Iceberg demo data into PostgreSQL benchmark

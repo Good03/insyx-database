@@ -1,6 +1,6 @@
 .PHONY: up down reset logs status shell-trino shell-postgres init-schema seed seed-small seed-100k seed-json seed-json-stage-only seed-stage-only load-stage optimize seed-postgres-json seed-postgres-small counts benchmark benchmark-fast demo
 
-PY ?= py
+PY ?= python
 INPUT_JSON ?= ai_subfield_100k_all_columns.json
 POSTGRES_ONLY_DB ?= scisci_postgres
 WORKS ?= 100000
