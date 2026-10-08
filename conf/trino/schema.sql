@@ -155,6 +155,8 @@ CREATE TABLE IF NOT EXISTS iceberg.scisci.institutions (
     institution_type        VARCHAR,
     homepage_url            VARCHAR,
     ror                     VARCHAR,
+    latitude                DOUBLE,
+    longitude               DOUBLE,
     works_count             INTEGER,
     cited_by_count          INTEGER,
     created_at              TIMESTAMP(6),
@@ -291,3 +293,7 @@ CREATE TABLE IF NOT EXISTS iceberg.scisci.provenance_events (
 WITH (
     format = 'PARQUET'
 );
+
+-- Additive upgrade for existing lakehouses; existing coordinates remain unknown.
+ALTER TABLE iceberg.scisci.institutions ADD COLUMN IF NOT EXISTS latitude DOUBLE;
+ALTER TABLE iceberg.scisci.institutions ADD COLUMN IF NOT EXISTS longitude DOUBLE;

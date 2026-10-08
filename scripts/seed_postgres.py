@@ -35,6 +35,7 @@ INDEX_STATEMENTS = [
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Direct OpenAlex JSON import into PostgreSQL SciSci tables.")
     parser.add_argument("--input-json", type=Path, required=True)
+    parser.add_argument("--institutions-json", type=Path, help="Institution metadata JSON with latitude/longitude.")
     parser.add_argument("--input-limit", type=int, default=0)
     parser.add_argument("--replace", action="store_true", help="Replace the existing scisci schema before importing.")
     parser.add_argument("--stage-dir", default="staging")
@@ -68,6 +69,8 @@ def prepare_schema(args: argparse.Namespace) -> None:
             for table in TABLE_ORDER:
                 columns = ", ".join(f"{column} {pg_type(column)}" for column in COLUMNS[table])
                 cur.execute(f"CREATE TABLE IF NOT EXISTS {POSTGRES_SCHEMA}.{table} ({columns})")
+            cur.execute("ALTER TABLE scisci.institutions ADD COLUMN IF NOT EXISTS latitude double precision")
+            cur.execute("ALTER TABLE scisci.institutions ADD COLUMN IF NOT EXISTS longitude double precision")
         conn.commit()
 
 
