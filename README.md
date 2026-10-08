@@ -134,31 +134,41 @@ py scripts/seed.py --input-json ai_subfield_100k_all_columns.json --input-limit 
 ## Application users
 
 Application accounts live in `insyx.public.users`, separate from scientific
-authors and the schemas replaced by data seeders. Fresh PostgreSQL volumes create
-the `insyx` database and apply `conf/postgres/migrations/001_users.sql` automatically.
-The table stores UUID IDs, normalized unique email, display name, optional avatar,
-email verification, login timestamps, and a nullable unique Google subject ID.
-Multiple users without a Google identity are allowed. No passwords or OAuth tokens
-are stored. `updated_at` is maintained by the backend's TypeORM writes.
+`authors` and the schemas replaced by data seeders. Fresh PostgreSQL volumes
+create `insyx` and apply both account migrations. The schema matches the backend's
+current authentication model: UUID ID, normalized unique email, nullable name and
+affiliation, password hash, nullable unique Google ID (`sub`), password-reset hash
+and expiry, optional avatar, email verification, login and creation/update timestamps.
+OAuth access/refresh tokens and plaintext passwords are not stored.
 
-For an existing volume, initialization scripts do not run again. Create the
-application database once if it does not exist, then apply the additive migration:
+For an existing volume, initialization scripts do not run again. Create `insyx`
+once if it does not exist, then apply **both** additive migrations in order:
 
 ```bash
 docker compose exec postgres sh -c 'createdb -U "$POSTGRES_USER" insyx'
 docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d insyx' < conf/postgres/migrations/001_users.sql
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d insyx' < conf/postgres/migrations/002_users_auth_compat.sql
 ```
 
-Skip `createdb` when `insyx` already exists. The migration can be rerun and does
-not delete data. The backend also runs the matching TypeORM migration on startup.
-Configure its `DB_NAME=insyx`, `DB_USER` and `DB_PASSWORD` to match this stack, and
-point `DB_HOST` at this PostgreSQL instance. If an existing backend uses another
-database, apply the SQL there instead and retain that `DB_NAME`.
+Skip `createdb` when `insyx` already exists. The scripts can be rerun. The second
+migration upgrades both the earlier feature schema and the pulled backend main
+schema, preserving account IDs and credentials. It renames the old snake_case
+columns to the current backend's column names and adds missing columns. Normalized
+email collisions or ambiguous old/new column pairs abort the transaction instead
+of merging accounts or losing data. It does not automatically downgrade.
+`updatedAt` is maintained by TypeORM writes. Back up accounts before upgrading.
 
-Google sign-in is prepared at the storage level. Future backend authentication
-must verify Google's ID token before storing its stable `sub` in `google_subject`;
-email alone must not be used to identify or automatically link a Google account.
-See [Google's backend authentication guide](https://developers.google.com/identity/sign-in/web/backend-auth).
+The backend runs matching TypeORM migrations on startup, with schema synchronization
+disabled. Its default deployment uses a separate PostgreSQL on port 5433. These SQL
+scripts do not copy accounts between databases. To use this stack's PostgreSQL for
+accounts, configure backend `DB_NAME=insyx` and explicitly point `DB_HOST`, `DB_PORT`,
+`DB_USER`, and `DB_PASSWORD` at this instance. For an existing backend database,
+apply the scripts there instead and retain its connection settings.
+
+The pulled backend main already implements Google sign-in. Keep the unique
+`googleId` from the server-verified Google token's `sub` claim as the provider
+identity. It is distinct from the UUID used by application APIs. See
+[Google's backend authentication guide](https://developers.google.com/identity/sign-in/web/backend-auth).
 
 ## Project Layout
 

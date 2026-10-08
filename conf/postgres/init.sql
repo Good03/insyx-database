@@ -6,3 +6,4 @@ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = name)
 
 \connect insyx
 \ir migrations/001_users.sql
+\ir migrations/002_users_auth_compat.sql
