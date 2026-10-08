@@ -103,6 +103,45 @@ To load the OpenAlex AI subfield export with all work columns:
 py scripts/seed.py --input-json ai_subfield_100k_all_columns.json --replace-iceberg --optimize
 ```
 
+## Institution locations and work affiliations
+
+`work_institutions` connects works to institutions through author affiliations,
+allowing a work to belong to several institutions. Institution work/citation
+counts count each work once per institution, even when several authors share it.
+`institutions.latitude` and `institutions.longitude` are double precision.
+
+Flattened exports lack institution coordinates. Supply a metadata JSON array
+using the exact institution IDs present in `full_authors_info`:
+
+```json
+[
+  {"institution_id": "I1", "display_name": "Institution 1", "latitude": 48.15, "longitude": 17.1},
+  {"institution_id": "I2", "display_name": "Institution 2", "latitude": 50.08, "longitude": 14.43}
+]
+```
+
+These are illustrative locations. Use actual institution coordinates for real
+data. The metadata loader also accepts `id` and nested
+`geo: {"latitude": ..., "longitude": ...}`. Coordinates must be supplied as a
+pair within latitude −90…90 and longitude −180…180; invalid values abort staging.
+Only institutions affiliated with imported works are loaded. Unknown coordinates
+remain NULL and are excluded from the backend map. Synthetic seeders generate
+demo coordinates, which do not represent real institutions.
+
+```bash
+python scripts/seed.py --input-json works.json --institutions-json institutions.json
+# Or PostgreSQL-only:
+python scripts/seed_postgres.py --input-json works.json --institutions-json institutions.json
+```
+
+For existing Iceberg tables, run `make init-schema` before updating the backend.
+The schema script and staged lakehouse loader add missing coordinate columns
+without deleting existing rows. PostgreSQL-only imports also add missing columns.
+These upgrades leave existing locations NULL; use verified metadata when loading
+works, or update institution rows by ID to backfill existing data. Import commands
+append data unless replacement is explicitly requested; avoid importing the same
+works twice. Application user tables are separate from these scientific tables.
+
 ## PostgreSQL-Only Mode
 
 `scisci_postgres` is an independent relational implementation. It does not use

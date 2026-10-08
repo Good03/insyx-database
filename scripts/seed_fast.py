@@ -100,6 +100,8 @@ def build_data(args: argparse.Namespace) -> dict[str, list[tuple[Any, ...]]]:
             "display_name": fake.company(),
             "country_code": fake.country_code(),
             "institution_type": random.choice(INSTITUTION_TYPES),
+            "latitude": float(fake.latitude()),
+            "longitude": float(fake.longitude()),
             "homepage_url": fake.url(),
             "ror": f"https://ror.org/{fake.lexify('???????')}",
         }
@@ -339,6 +341,8 @@ def build_data(args: argparse.Namespace) -> dict[str, list[tuple[Any, ...]]]:
             institution["institution_type"],
             institution["homepage_url"],
             institution["ror"],
+            institution["latitude"],
+            institution["longitude"],
             institution_works_count[institution["institution_id"]],
             institution_citations[institution["institution_id"]],
         )
@@ -514,6 +518,8 @@ def main() -> int:
                 "institution_type",
                 "homepage_url",
                 "ror",
+                "latitude",
+                "longitude",
                 "works_count",
                 "cited_by_count",
             ],

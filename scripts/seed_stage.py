@@ -4,6 +4,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import random
 import re
 import shutil
@@ -146,6 +147,8 @@ COLUMNS: dict[str, list[str]] = {
         "institution_type",
         "homepage_url",
         "ror",
+        "latitude",
+        "longitude",
         "works_count",
         "cited_by_count",
         "created_at",
@@ -233,7 +236,7 @@ INTEGER_COLUMNS = {
     "cited_year",
     "citation_age",
 }
-DOUBLE_COLUMNS = {"apc_value", "apc_usd", "score"}
+DOUBLE_COLUMNS = {"apc_value", "apc_usd", "score", "latitude", "longitude"}
 BOOLEAN_COLUMNS = {"is_oa", "is_publicly_shareable"}
 TIMESTAMP_COLUMNS = {"created_at", "updated_at", "ingested_at"}
 DATE_COLUMNS = {"ingested_date"}
@@ -242,6 +245,7 @@ DATE_COLUMNS = {"ingested_date"}
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Staged seed: TSV files -> PostgreSQL COPY -> Trino INSERT SELECT -> Iceberg.")
     parser.add_argument("--input-json", type=Path, help="OpenAlex all-columns JSON export to load instead of synthetic data.")
+    parser.add_argument("--institutions-json", type=Path, help="Institution metadata JSON array keyed by institution_id (or OpenAlex id), including latitude/longitude or geo.")
     parser.add_argument("--input-limit", type=int, default=0, help="Optional maximum number of JSON records to import.")
     parser.add_argument("--works", type=int, default=100_000)
     parser.add_argument("--authors", type=int, default=20_000)
@@ -604,6 +608,8 @@ def make_pools(args: argparse.Namespace):
             "institution_type": random.choice(INSTITUTION_TYPES),
             "homepage_url": f"https://institution-{index + 1}.example.org",
             "ror": f"https://ror.org/{index + 1:07d}",
+            "latitude": random.uniform(-80, 80),
+            "longitude": random.uniform(-180, 180),
         }
         for index in range(args.institutions)
     ]
@@ -965,6 +971,8 @@ def generate_files(args: argparse.Namespace, run_dir: Path) -> dict[str, int]:
                         "institution_type": institution["institution_type"],
                         "homepage_url": institution["homepage_url"],
                         "ror": institution["ror"],
+                        "latitude": institution["latitude"],
+                        "longitude": institution["longitude"],
                         "works_count": institution_works[institution["institution_id"]],
                         "cited_by_count": institution_citations[institution["institution_id"]],
                         "created_at": now,
@@ -980,6 +988,45 @@ def generate_files(args: argparse.Namespace, run_dir: Path) -> dict[str, int]:
     return counts
 
 
+def load_institution_metadata(path: Path | None) -> dict[str, dict[str, Any]]:
+    """Enrich flattened exports without guessing locations from institution names."""
+    if path is None:
+        return {}
+    records = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(records, list):
+        raise ValueError("Institution metadata must be a JSON array")
+    result = {}
+    for record in records:
+        if not isinstance(record, dict):
+            raise ValueError("Each institution metadata entry must be an object")
+        institution_id = record.get("institution_id") or record.get("id")
+        if not isinstance(institution_id, str) or not institution_id.strip():
+            raise ValueError("Each institution needs an institution_id or id")
+        if institution_id in result:
+            raise ValueError(f"Duplicate institution metadata: {institution_id}")
+        geo = record.get("geo") or {}
+        if not isinstance(geo, dict):
+            raise ValueError(f"Invalid geo object for {institution_id}")
+        latitude = record.get("latitude", geo.get("latitude"))
+        longitude = record.get("longitude", geo.get("longitude"))
+        if latitude is not None or longitude is not None:
+            try:
+                if isinstance(latitude, bool) or isinstance(longitude, bool):
+                    raise ValueError()
+                latitude, longitude = float(latitude), float(longitude)
+                if not (math.isfinite(latitude) and math.isfinite(longitude)
+                        and -90 <= latitude <= 90 and -180 <= longitude <= 180):
+                    raise ValueError()
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"Invalid latitude/longitude pair for {institution_id}") from exc
+        result[institution_id] = {
+            key: record.get(key) for key in
+            ("display_name", "country_code", "institution_type", "homepage_url", "ror")
+        }
+        result[institution_id].update(latitude=latitude, longitude=longitude)
+    return result
+
+
 def generate_json_files(args: argparse.Namespace, run_dir: Path) -> dict[str, int]:
     if args.input_json is None:
         raise ValueError("--input-json is required for JSON import")
@@ -987,6 +1034,7 @@ def generate_json_files(args: argparse.Namespace, run_dir: Path) -> dict[str, in
     if not input_path.exists():
         raise FileNotFoundError(input_path)
 
+    institution_metadata = load_institution_metadata(getattr(args, "institutions_json", None))
     handles, writers = open_writers(run_dir)
     counts = {table: 0 for table in TABLE_ORDER}
     now = datetime.now()
@@ -1102,6 +1150,7 @@ def generate_json_files(args: argparse.Namespace, run_dir: Path) -> dict[str, in
                 source["cited_by_count"] += cited_by_count
                 source["is_oa"] = bool(source["is_oa"] or work_values["is_oa"])
 
+            seen_institutions = set()
             for position, author in enumerate(authors):
                 author_id = author.get("author_id")
                 display_name = author.get("display_name")
@@ -1201,8 +1250,13 @@ def generate_json_files(args: argparse.Namespace, run_dir: Path) -> dict[str, in
                     update_if_present(institution_row, "display_name", first_institution_name)
                     update_if_present(institution_row, "country_code", author.get("country_code"))
                     update_if_present(institution_row, "institution_type", author.get("institution_type"))
-                    institution_row["works_count"] += 1
-                    institution_row["cited_by_count"] += cited_by_count
+                    metadata = institution_metadata.get(institution_id, {})
+                    for key, value in metadata.items():
+                        update_if_present(institution_row, key, value)
+                    if institution_id not in seen_institutions:
+                        institution_row["works_count"] += 1
+                        institution_row["cited_by_count"] += cited_by_count
+                        seen_institutions.add(institution_id)
 
             topic_names = split_comma_list(work_values["topics"])
             primary_topic = work_values["primary_topic"]
@@ -1449,6 +1503,9 @@ def load_iceberg(args: argparse.Namespace) -> None:
         if args.replace_iceberg:
             print("resetting Iceberg tables")
             reset_iceberg(cur)
+
+        cur.execute("ALTER TABLE iceberg.scisci.institutions ADD COLUMN IF NOT EXISTS latitude DOUBLE")
+        cur.execute("ALTER TABLE iceberg.scisci.institutions ADD COLUMN IF NOT EXISTS longitude DOUBLE")
 
         for table in TABLE_ORDER:
             columns = ", ".join(COLUMNS[table])
