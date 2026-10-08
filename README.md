@@ -131,6 +131,35 @@ For a quick parser check without touching PostgreSQL or Iceberg:
 py scripts/seed.py --input-json ai_subfield_100k_all_columns.json --input-limit 1000 --skip-postgres-copy
 ```
 
+## Application users
+
+Application accounts live in `insyx.public.users`, separate from scientific
+authors and the schemas replaced by data seeders. Fresh PostgreSQL volumes create
+the `insyx` database and apply `conf/postgres/migrations/001_users.sql` automatically.
+The table stores UUID IDs, normalized unique email, display name, optional avatar,
+email verification, login timestamps, and a nullable unique Google subject ID.
+Multiple users without a Google identity are allowed. No passwords or OAuth tokens
+are stored. `updated_at` is maintained by the backend's TypeORM writes.
+
+For an existing volume, initialization scripts do not run again. Create the
+application database once if it does not exist, then apply the additive migration:
+
+```bash
+docker compose exec postgres sh -c 'createdb -U "$POSTGRES_USER" insyx'
+docker compose exec -T postgres sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d insyx' < conf/postgres/migrations/001_users.sql
+```
+
+Skip `createdb` when `insyx` already exists. The migration can be rerun and does
+not delete data. The backend also runs the matching TypeORM migration on startup.
+Configure its `DB_NAME=insyx`, `DB_USER` and `DB_PASSWORD` to match this stack, and
+point `DB_HOST` at this PostgreSQL instance. If an existing backend uses another
+database, apply the SQL there instead and retain that `DB_NAME`.
+
+Google sign-in is prepared at the storage level. Future backend authentication
+must verify Google's ID token before storing its stable `sub` in `google_subject`;
+email alone must not be used to identify or automatically link a Google account.
+See [Google's backend authentication guide](https://developers.google.com/identity/sign-in/web/backend-auth).
+
 ## Project Layout
 
 ```
